@@ -39,7 +39,7 @@
       concurrency: 3
     },
     // ⚠️ protège aussi le widget
-    excludeSelectors: "script,style,noscript,code,pre,textarea,input,select,[contenteditable],[data-gett-exclude],[data-gett-widget]",
+    excludeSelectors: "script,style,noscript,code,pre,textarea,input,select,[contenteditable],[data-gett-exclude],[data-gett-widget],[aria-hidden='true']",
     requireConsent: false,
     learnUrl: "https://gett.example"
   };
@@ -49,6 +49,7 @@
   let currentMode = null;
   const originalMap = new WeakMap();
   const processing = new Set();
+  const enqueued = new WeakSet();
   const queue = [];
   let running = 0;
   const initialHtmlLang = d.documentElement.getAttribute('lang') || '';
@@ -60,11 +61,8 @@
 
   function createUI(){
     const root = d.createElement('div');
+    root.setAttribute('data-gett-widget',''); // exclure le widget
 
-    // Marque le conteneur UI comme "widget" pour exclusion
-    root.setAttribute('data-gett-widget','');
-
-    // Launcher (G)
     const launcher = d.createElement('button');
     launcher.id = 'gett-launcher';
     launcher.setAttribute('aria-expanded','false');
@@ -73,7 +71,6 @@
     launcher.innerHTML = '<span aria-hidden="true" style="font-weight:700; font-size:1.1rem; line-height:1">G</span>';
     root.appendChild(launcher);
 
-    // Popin
     const popin = d.createElement('section');
     popin.id = 'gett-popin';
     popin.setAttribute('role','dialog');
@@ -95,7 +92,6 @@
       </div>`;
     root.appendChild(popin);
 
-    // Open/Close
     function open(){ popin.classList.add('open'); launcher.setAttribute('aria-expanded','true'); }
     function close(){ popin.classList.remove('open'); launcher.setAttribute('aria-expanded','false'); }
     function toggle(){ popin.classList.contains('open') ? close() : open(); }
@@ -108,22 +104,16 @@
     });
     d.addEventListener('keydown', (e)=>{ if(e.key==='Escape') close(); });
 
-    // Actions boutons (front)
+    // Actions
     popin.querySelector('#btn-feminine').addEventListener('click', ()=>{ close(); onSelectMode("feminine"); });
     popin.querySelector('#btn-masculine').addEventListener('click', ()=>{ close(); onSelectMode("masculine"); });
     popin.querySelector('#btn-translate-en').addEventListener('click', ()=>{ close(); onSelectMode("translate-en"); });
     popin.querySelector('#btn-vanilla' ).addEventListener('click', ()=>{ close(); onReset(); });
     popin.querySelector('#btn-learn'   ).addEventListener('click', ()=>{ onLearn(); });
 
-    // API exposée au reste du script
     function onSelectMode(mode){
       currentMode = mode;
-      // Ajuste lang HTML si traduction EN
-      if(mode === 'translate-en'){
-        d.documentElement.setAttribute('lang','en');
-      } else {
-        // ne touche pas à 'lang' pour les autres modes
-      }
+      if(mode === 'translate-en'){ d.documentElement.setAttribute('lang','en'); }
       runPipeline();
     }
     function onReset(){
@@ -183,28 +173,44 @@
     enqueueTextNodes(d.body);
     pumpQueue();
   }
+
   function enqueueTextNodes(root){
     const walker = d.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
       acceptNode(node){
         if(!node || !node.nodeValue || !node.parentElement) return NodeFilter.FILTER_REJECT;
         if(shouldExclude(node.parentElement)) return NodeFilter.FILTER_REJECT;
         const t = normalize(node.nodeValue);
+        if(!t) return NodeFilter.FILTER_REJECT;
         if(t.length < cfg.api.minChars) return NodeFilter.FILTER_REJECT;
         return NodeFilter.FILTER_ACCEPT;
       }
     });
     let n; while((n = walker.nextNode())) enqueueNode(n);
   }
-  function enqueueNode(node){ if(!processing.has(node)) queue.push(node); }
+
+  function enqueueNode(node){
+    if(!node || !node.parentElement) return;
+    if(processing.has(node) || enqueued.has(node)) return;
+    enqueued.add(node);
+    queue.push(node);
+  }
 
   function pumpQueue(){
     while(running < cfg.api.concurrency && queue.length){
       const node = queue.shift();
-      if(!node || !node.parentElement) continue;
+      if(!node || !node.parentElement || !node.isConnected){
+        enqueued.delete(node);
+        continue;
+      }
       processing.add(node); running++;
       transformNode(node, currentMode)
         .catch(err=>console.warn("[GETT] transform error:", err))
-        .finally(()=>{ running--; processing.delete(node); pumpQueue(); });
+        .finally(()=>{
+          running--;
+          processing.delete(node);
+          enqueued.delete(node);
+          pumpQueue();
+        });
     }
   }
 
@@ -212,10 +218,13 @@
     if(!mode) return;
     const raw = node.nodeValue || "";
     const text = normalize(raw).slice(0, cfg.api.maxChars);
+    if(!text) return; // skip vide après normalisation
     if(!originalMap.has(node)) originalMap.set(node, { text: raw });
 
     const out = await callAPI(text, mode);
-    if(typeof out === "string" && out.trim()) node.nodeValue = out;
+    if(typeof out === "string" && out.trim() && node.isConnected){
+      node.nodeValue = out;
+    }
   }
 
   function revertAll(){
