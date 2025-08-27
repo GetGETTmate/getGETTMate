@@ -42,4 +42,7 @@ Dans un tag **Custom HTML** (All Pages), on colle :
 })(window,document);
 </script>
 
+
+
 On ajoute dans W-Gett-Client le slug qui convient
+# redeploy
