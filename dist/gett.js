@@ -31,7 +31,7 @@
       type: "simple",                 // 'simple' (ton /api/transform) ou 'openai'
       endpoint: "https://get-gett-mate.vercel.app/api/transform",
       key: "",
-      headers: { "X-Gett-Client": "leschineries" },
+      headers: {}, // <-- plus de X-Gett-Client ici (injecté runtime via GTM)
       timeoutMs: 8000,
       retries: 1,
       minChars: 12,
@@ -44,6 +44,19 @@
     learnUrl: "https://gett.example"
   };
   const cfg = mergeDeep(defaults, w.gettCfg || {});
+
+  // --- (Optionnel) fallback pour X-Gett-Client via <meta> -----------------
+  (function ensureClientSlug(){
+    const hasHeader = cfg?.api?.headers && Object.keys(cfg.api.headers).some(k => k.toLowerCase() === "x-gett-client");
+    if (!hasHeader){
+      const meta = d.querySelector('meta[name="x-gett-client"]');
+      const slug = meta?.getAttribute('content');
+      if (slug){
+        cfg.api.headers = cfg.api.headers || {};
+        cfg.api.headers["X-Gett-Client"] = slug;
+      }
+    }
+  })();
 
   // --- State --------------------------------------------------------------
   let currentMode = null;
@@ -218,7 +231,7 @@
     if(!mode) return;
     const raw = node.nodeValue || "";
     const text = normalize(raw).slice(0, cfg.api.maxChars);
-    if(!text) return; // skip vide après normalisation
+    if(!text) return;
     if(!originalMap.has(node)) originalMap.set(node, { text: raw });
 
     const out = await callAPI(text, mode);
@@ -242,7 +255,9 @@
 
     const headers = { "Content-Type": "application/json" };
     if (cfg.api.key) headers["Authorization"] = "Bearer " + cfg.api.key;
-    for (const k in (cfg.api.headers||{})) headers[k] = cfg.api.headers[k];
+    if (cfg.api.headers){
+      for (const k in cfg.api.headers) headers[k] = cfg.api.headers[k];
+    }
 
     let lastErr = null;
     for(let i=0;i<=cfg.api.retries;i++){
@@ -268,7 +283,6 @@
     throw lastErr;
   }
 
-  // Ajout du mode translate-en dans la version "openai" directe si jamais tu l'utilises
   function openaiBody(text, mode){
     const system =
       "Tu es un post-processeur de texte pour le web. " +
@@ -293,6 +307,6 @@
     return false;
   }
 
-  function hasConsent(){ return true; } // hook consent si nécessaire
+  function hasConsent(){ return true; }
 
 })(window,document);
