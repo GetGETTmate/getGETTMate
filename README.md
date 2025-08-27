@@ -1,48 +1,23 @@
-# GETT client (widget + pipeline texte)
+📖 GETT
+GETT est un script léger qui permet de transformer dynamiquement les textes d’une page web côté client.
+Il s’installe simplement dans le site et peut être activé ou désactivé selon les besoins.
 
-## Chargement (via GTM recommandé)
-Dans un tag **Custom HTML** (All Pages), on colle :
+✨ Objectif
+💬 Modifier le texte affiché (ex. changer le genre, simplifier le style, traduire).
+🕶 Fonctionner de manière invisible pour l’utilisateur final, sans modifier le code source du site.
+⚡ Offrir une intégration rapide, modulable et respectueuse des performances.
 
-<script>
-(function(w,d){
-  if(w.__gettInit){return} w.__gettInit = 1;
+🚀 Cas d’usage
+Accessibilité : adapter la lecture d’un texte pour le rendre plus inclusif.
+Internationalisation : traduire le contenu à la volée.
+Expérimentation : tester différents tons ou typologies de contenu sans toucher au site d’origine.
 
-  w.gettCfg = {
-    learnUrl: "https://gett.example",
-    right: "18px",
-    bottom: "18px",
-    z: 99999,
-    requireConsent: false,
-    excludeSelectors: "script,style,noscript,code,pre,textarea,input,select,[contenteditable],[data-gett-exclude]",
-    api: {
-      type: "simple",
-      endpoint: "https://get-gett-mate.vercel.app/api/transform",
-      key: "",
-      headers: { "X-Gett-Client": "leschineries" },
-      timeoutMs: 8000,
-      retries: 1,
-      minChars: 12,
-      maxChars: 1200,
-      concurrency: 3
-    }
-  };
+🔒 Sécurité
+Les appels aux services de transformation passent par un proxy sécurisé, garantissant que les clés d’API ne sont jamais exposées côté client.
 
-  function loadGett(){
-    var s = d.createElement('script');
-    s.async = true;
-    s.src = "https://cdn.jsdelivr.net/gh/GetGETTmate/getGETTMate@main/dist/gett.js";
-    d.head.appendChild(s);
-  }
+📌 Roadmap
+Amélioration continue de l’interface du widget.
+Suivi et statistiques d’usage.
+Nouvelles options de personnalisation des transformations.
 
-  if (d.readyState === "loading") {
-    d.addEventListener("DOMContentLoaded", loadGett, { once:true });
-  } else {
-    loadGett();
-  }
-})(window,document);
-</script>
-
-
-
-On ajoute dans W-Gett-Client le slug qui convient
-# redeploy
+👉 GETT vise à rendre le contenu web plus souple et adaptable, directement depuis le navigateur.
