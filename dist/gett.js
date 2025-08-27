@@ -29,9 +29,9 @@
     z: 99999,
     api: {
       type: "simple",                 // 'simple' (ton /api/transform) ou 'openai'
-      endpoint: "https://api.example.com/transform",
+      endpoint: "https://get-gett-mate.vercel.app/api/transform",
       key: "",
-      headers: {},
+      headers: { "X-Gett-Client": "leschineries" },
       timeoutMs: 8000,
       retries: 1,
       minChars: 12,
