@@ -32,18 +32,26 @@ function pickClientKey(req) {
   return { apiKey, slug: slug || 'unknown' };
 }
 
+// Ajout du mode translate-en + micro-ajustements de prompt
 function buildSystemPrompt({ mode='feminine', instruction='', locale='fr-FR' }) {
   const base =
 `Tu es un transformateur de texte pour le web.
 - Conserve strictement la mise en forme HTML et les entités (&nbsp;…).
 - Ne modifie jamais l’HTML (balises/attributs) ni les variables {{handlebars}}.
-- Ne résume pas, transforme uniquement le genre grammatical selon la consigne.
+- N’ajoute pas d’explications, ne résume pas.
 - Langue de sortie: ${locale}.
-- Retourne UNIQUEMENT le texte transformé, sans explication.`;
+- Retourne UNIQUEMENT le texte transformé.`;
+
   const line =
-    mode === 'feminine' ? 'Transforme tout au **féminin**.' :
-    mode === 'masculine' ? 'Transforme tout au **masculin**.' :
-    mode === 'neutral'   ? 'Rends le texte **neutre/inclusif**.' : '';
+    mode === 'feminine'     ? 'Transforme tout au **féminin**.' :
+    mode === 'masculine'    ? 'Transforme tout au **masculin**.' :
+    mode === 'neutral'      ? 'Rends le texte **neutre/inclusif**.' :
+    mode === 'translate-en' ? [
+      'Traduis le texte du **français vers l’anglais** (anglais naturel et idiomatique).',
+      'Si une portion est déjà en anglais, laisse-la **inchangée**.'
+    ].join(' ') :
+    '';
+
   const extra = instruction ? `\nConsigne additionnelle: ${instruction}` : '';
   return [base, line, extra].filter(Boolean).join('\n');
 }
@@ -74,6 +82,12 @@ export default async function handler(req) {
       return new Response(JSON.stringify({ error:'Missing "text"' }), { status: 400, headers });
     }
 
+    // 🔹 Normalisation: si on est en mode traduction, force la locale en-US par défaut
+    const normalizedBody = { ...body };
+    if (normalizedBody.mode === 'translate-en') {
+      normalizedBody.locale = normalizedBody.locale || 'en-US';
+    }
+
     const upstream = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: {
@@ -83,7 +97,7 @@ export default async function handler(req) {
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         input: [
-          { role:'system', content: buildSystemPrompt(body) },
+          { role:'system', content: buildSystemPrompt(normalizedBody) },
           { role:'user',   content: text }
         ],
         temperature: 0.2
