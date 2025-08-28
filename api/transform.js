@@ -9,8 +9,6 @@ function cors(req) {
     .map(s => s.trim())
     .filter(Boolean);
 
-  // Si ALLOWED_ORIGINS est vide => autoriser tout (utile en dev)
-  // Sinon, renvoyer l'origin si match exact, sinon le premier autorisé (pour éviter blocage dur)
   const allow =
     allowedList.length === 0
       ? '*'
@@ -33,10 +31,8 @@ function pickClientKey(req) {
   let map = {};
   try { map = JSON.parse(process.env.OPENAI_CLIENT_KEYS || '{}'); } catch {}
 
-  // 1) priorité au slug explicite
   let apiKey = slug && map[slug];
 
-  // 2) sinon, tenter via le referer (domaine complet, domaine sans www, premier label)
   if (!apiKey) {
     const ref = h.get('referer') || '';
     let host = '';
@@ -48,7 +44,6 @@ function pickClientKey(req) {
     }
   }
 
-  // 3) sinon, clé par défaut optionnelle
   if (!apiKey && process.env.OPENAI_API_KEY_DEFAULT) {
     apiKey = process.env.OPENAI_API_KEY_DEFAULT;
   }
@@ -56,7 +51,6 @@ function pickClientKey(req) {
   return { apiKey, slug: slug || 'unknown' };
 }
 
-// Prompt builder (ajout translate-en, garde HTML, pas d'explication)
 function buildSystemPrompt({ mode='feminine', instruction='', locale='fr-FR' }) {
   const base =
 `Tu es un transformateur de texte pour le web.
@@ -113,7 +107,6 @@ export default async function handler(req) {
       });
     }
 
-    // Normalisation locale
     const normalizedBody = { ...body };
     if (normalizedBody.mode === 'translate-en') {
       normalizedBody.locale = normalizedBody.locale || 'en-US';
@@ -121,7 +114,6 @@ export default async function handler(req) {
       normalizedBody.locale = normalizedBody.locale || 'fr-FR';
     }
 
-    // Optionnel: couper si texte gigantesque (sécurité)
     const maxChars = Number(process.env.MAX_CHARS || 4000);
     const inputText = text.length > maxChars ? text.slice(0, maxChars) : text;
 
@@ -137,12 +129,11 @@ export default async function handler(req) {
           { role:'system', content: buildSystemPrompt(normalizedBody) },
           { role:'user',   content: inputText }
         ],
-        response_format: { type: 'text' },
+        text: { format: 'plain' }, // ✅ remplace response_format
         temperature: 0.2
       })
     });
 
-    // Gestion erreurs HTTP
     if (!upstream.ok) {
       let detail = '';
       try { detail = await upstream.text(); } catch {}
@@ -154,7 +145,6 @@ export default async function handler(req) {
 
     const data = await upstream.json();
 
-    // Gestion d'erreur OpenAI au format JSON
     if (data?.error) {
       return new Response(JSON.stringify({ error:'OpenAI error', detail: data.error }), {
         status: 502,
@@ -162,7 +152,6 @@ export default async function handler(req) {
       });
     }
 
-    // Extraction robuste de la sortie
     const usage = data.usage || data.output?.[0]?.usage || null;
     const outText =
       data.output_text
