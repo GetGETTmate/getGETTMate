@@ -70,7 +70,20 @@
   // --- UI -----------------------------------------------------------------
   const ui = createUI();
   attachStyles();
-  withBody(()=> d.body.appendChild(ui.root));
+  withBody(()=> {
+    d.body.appendChild(ui.root);
+    // NEW: signaler que le widget est prêt
+    w.dispatchEvent(new CustomEvent('gett:ready')); // NEW
+
+    // NEW: appliquer les prefs injectées par GTM si présentes
+    if (w.gettCfg && (w.gettCfg.mode || w.gettCfg.lang)){
+      if (w.gettCfg.mode){ ui.onSelectMode(w.gettCfg.mode); }
+      else if (w.gettCfg.lang){
+        if (w.gettCfg.lang === 'en') { ui.onSelectMode('translate-en'); }
+        // (ajoute d’autres langues ici si tu élargis)
+      }
+    }
+  });
 
   function createUI(){
     const root = d.createElement('div');
@@ -126,13 +139,23 @@
 
     function onSelectMode(mode){
       currentMode = mode;
-      if(mode === 'translate-en'){ d.documentElement.setAttribute('lang','en'); }
+      if(mode === 'translate-en'){
+        d.documentElement.setAttribute('lang','en');
+        // NEW: notifier changement de langue
+        w.dispatchEvent(new CustomEvent('gett:lang-change', { detail: { lang: 'en' } })); // NEW
+      }
+      // NEW: notifier changement de mode
+      w.dispatchEvent(new CustomEvent('gett:mode-change', { detail: { mode } })); // NEW
+
       runPipeline();
     }
     function onReset(){
       currentMode = null;
       d.documentElement.setAttribute('lang', initialHtmlLang || '');
       revertAll();
+      // NEW: notifier reset (mode null) + retour langue
+      w.dispatchEvent(new CustomEvent('gett:mode-change', { detail: { mode: null } })); // NEW
+      w.dispatchEvent(new CustomEvent('gett:lang-change', { detail: { lang: initialHtmlLang || '' } })); // NEW
     }
     function onLearn(){ const url = cfg.learnUrl || '#'; w.open(url, '_blank', 'noopener,noreferrer'); }
 
@@ -308,5 +331,19 @@
   }
 
   function hasConsent(){ return true; }
+
+  // NEW: API publique minimale pour GTM/externes
+  w.gett = w.gett || {
+    setMode(mode){
+      // évite double dispatch: onSelectMode déclenche déjà les events
+      if (mode) { ui.onSelectMode(mode); }
+      else { ui.onReset(); }
+    },
+    setLang(lang){
+      // pour l’instant, seule “en” force le mode translate-en
+      if (lang === 'en'){ ui.onSelectMode('translate-en'); }
+      else { ui.onReset(); }
+    }
+  }; // NEW
 
 })(window,document);
