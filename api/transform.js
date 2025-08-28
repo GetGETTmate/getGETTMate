@@ -129,7 +129,7 @@ export default async function handler(req) {
           { role:'system', content: buildSystemPrompt(normalizedBody) },
           { role:'user',   content: inputText }
         ],
-        text: { format: 'plain' }, // ✅ remplace response_format
+        // (plus de response_format / text.format)
         temperature: 0.2
       })
     });
