@@ -1,4 +1,4 @@
-// == GETT client (UI + pipeline) — version allégée =========================
+// == GETT client (UI + pipeline) — version avec largeur & bouton actif =====
 (function(w,d){
   if(w.__gettClientLoaded){return} w.__gettClientLoaded = true;
 
@@ -27,11 +27,15 @@
     right: "18px",
     bottom: "18px",
     z: 99999,
+    ui: {
+      panelWidth: "clamp(280px, 28vw, 360px)", // largeur plus étroite par défaut
+      activeColor: "#7c3aed"                   // couleur d’accent du bouton actif
+    },
     api: {
       type: "simple",                 // 'simple' (ton /api/transform) ou 'openai'
       endpoint: "https://get-gett-mate.vercel.app/api/transform",
       key: "",
-      headers: {}, // <-- plus de X-Gett-Client ici (injecté runtime via GTM)
+      headers: {}, // <-- X-Gett-Client injecté runtime (GTM ou <meta>)
       timeoutMs: 8000,
       retries: 1,
       minChars: 12,
@@ -72,16 +76,16 @@
   attachStyles();
   withBody(()=> {
     d.body.appendChild(ui.root);
-    // NEW: signaler que le widget est prêt
-    w.dispatchEvent(new CustomEvent('gett:ready')); // NEW
-
-    // NEW: appliquer les prefs injectées par GTM si présentes
+    w.dispatchEvent(new CustomEvent('gett:ready'));
+    // Appliquer prefs injectées par GTM si présentes
     if (w.gettCfg && (w.gettCfg.mode || w.gettCfg.lang)){
       if (w.gettCfg.mode){ ui.onSelectMode(w.gettCfg.mode); }
       else if (w.gettCfg.lang){
         if (w.gettCfg.lang === 'en') { ui.onSelectMode('translate-en'); }
-        // (ajoute d’autres langues ici si tu élargis)
       }
+    } else {
+      // état visuel initial : Vanilla actif
+      ui.setActiveUI(null);
     }
   });
 
@@ -108,16 +112,17 @@
       </div>
       <div class="popin-body" id="popin-body">
         <div class="buttons-col">
-          <button class="button" id="btn-feminine">Féminin</button>
-          <button class="button" id="btn-masculine">Masculin</button>
-          <button class="button" id="btn-translate-en">🇬🇧 Anglais</button>
-          <button class="button" id="btn-vanilla">Annuler (Vanilla)</button>
+          <button class="button" id="btn-feminine"      aria-pressed="false">Féminin</button>
+          <button class="button" id="btn-masculine"     aria-pressed="false">Masculin</button>
+          <button class="button" id="btn-translate-en"  aria-pressed="false">🇬🇧 Anglais</button>
+          <button class="button" id="btn-vanilla"       aria-pressed="false">Annuler (Vanilla)</button>
           <button class="button learn" id="btn-learn">En savoir + sur Gett</button>
         </div>
         <div class="subtitle">gendertexttransform.com</div>
       </div>`;
     root.appendChild(popin);
 
+    // Open/Close
     function open(){ popin.classList.add('open'); launcher.setAttribute('aria-expanded','true'); }
     function close(){ popin.classList.remove('open'); launcher.setAttribute('aria-expanded','false'); }
     function toggle(){ popin.classList.contains('open') ? close() : open(); }
@@ -130,41 +135,63 @@
     });
     d.addEventListener('keydown', (e)=>{ if(e.key==='Escape') close(); });
 
+    // Références boutons
+    const btnFem   = popin.querySelector('#btn-feminine');
+    const btnMas   = popin.querySelector('#btn-masculine');
+    const btnEn    = popin.querySelector('#btn-translate-en');
+    const btnVan   = popin.querySelector('#btn-vanilla');
+    const btnLearn = popin.querySelector('#btn-learn');
+
+    // Marquage visuel du choix actif
+    function setActiveUI(mode){
+      [btnFem, btnMas, btnEn, btnVan].forEach(b=>{
+        if(!b) return;
+        b.setAttribute('aria-pressed','false');
+      });
+      if(mode === 'feminine'     && btnFem) btnFem.setAttribute('aria-pressed','true');
+      if(mode === 'masculine'    && btnMas) btnMas.setAttribute('aria-pressed','true');
+      if(mode === 'translate-en' && btnEn ) btnEn .setAttribute('aria-pressed','true');
+      if(mode === null           && btnVan) btnVan.setAttribute('aria-pressed','true'); // Vanilla actif
+    }
+
     // Actions
-    popin.querySelector('#btn-feminine').addEventListener('click', ()=>{ close(); onSelectMode("feminine"); });
-    popin.querySelector('#btn-masculine').addEventListener('click', ()=>{ close(); onSelectMode("masculine"); });
-    popin.querySelector('#btn-translate-en').addEventListener('click', ()=>{ close(); onSelectMode("translate-en"); });
-    popin.querySelector('#btn-vanilla' ).addEventListener('click', ()=>{ close(); onReset(); });
-    popin.querySelector('#btn-learn'   ).addEventListener('click', ()=>{ onLearn(); });
+    btnFem .addEventListener('click', ()=>{ close(); onSelectMode("feminine");   });
+    btnMas .addEventListener('click', ()=>{ close(); onSelectMode("masculine");  });
+    btnEn  && btnEn.addEventListener('click', ()=>{ close(); onSelectMode("translate-en"); });
+    btnVan .addEventListener('click', ()=>{ close(); onReset();                  });
+    btnLearn.addEventListener('click', ()=>{ onLearn();                          });
 
     function onSelectMode(mode){
       currentMode = mode;
       if(mode === 'translate-en'){
         d.documentElement.setAttribute('lang','en');
-        // NEW: notifier changement de langue
-        w.dispatchEvent(new CustomEvent('gett:lang-change', { detail: { lang: 'en' } })); // NEW
+        w.dispatchEvent(new CustomEvent('gett:lang-change', { detail: { lang: 'en' } }));
       }
-      // NEW: notifier changement de mode
-      w.dispatchEvent(new CustomEvent('gett:mode-change', { detail: { mode } })); // NEW
-
+      setActiveUI(mode);
+      w.dispatchEvent(new CustomEvent('gett:mode-change', { detail: { mode } }));
       runPipeline();
     }
     function onReset(){
       currentMode = null;
       d.documentElement.setAttribute('lang', initialHtmlLang || '');
       revertAll();
-      // NEW: notifier reset (mode null) + retour langue
-      w.dispatchEvent(new CustomEvent('gett:mode-change', { detail: { mode: null } })); // NEW
-      w.dispatchEvent(new CustomEvent('gett:lang-change', { detail: { lang: initialHtmlLang || '' } })); // NEW
+      setActiveUI(null);
+      w.dispatchEvent(new CustomEvent('gett:mode-change', { detail: { mode: null } }));
+      w.dispatchEvent(new CustomEvent('gett:lang-change', { detail: { lang: initialHtmlLang || '' } }));
     }
     function onLearn(){ const url = cfg.learnUrl || '#'; w.open(url, '_blank', 'noopener,noreferrer'); }
 
-    return { root, onSelectMode, onReset, onLearn };
+    return { root, onSelectMode, onReset, onLearn, setActiveUI };
   }
 
   function attachStyles(){
     const css = `
-    :root{ --stroke:rgba(0,0,0,.12); --shadow:0 6px 18px rgba(0,0,0,.08); --bg:#fff; --text:#111; --muted:#666; --radius:14px; }
+    :root{
+      --stroke:rgba(0,0,0,.12); --shadow:0 6px 18px rgba(0,0,0,.08);
+      --bg:#fff; --text:#111; --muted:#666; --radius:14px;
+      --panel-w:${(cfg.ui && cfg.ui.panelWidth) || "clamp(280px, 28vw, 360px)"};
+      --active:${(cfg.ui && cfg.ui.activeColor) || "#7c3aed"};
+    }
     #gett-launcher{
       position:fixed; right:${cfg.right}; bottom:${cfg.bottom}; z-index:${cfg.z};
       width:52px; height:52px; border-radius:12px; background:var(--bg); color:var(--text);
@@ -172,20 +199,37 @@
       cursor:pointer; transition:transform .12s ease;
     }
     #gett-launcher:hover{ transform: translateY(-1px); }
+
     #gett-popin{
       position:fixed; right:${cfg.right}; bottom:calc(${cfg.bottom} + 60px); z-index:${cfg.z + 1};
-      width:clamp(320px, 32vw, 420px); background:var(--bg); border:1px solid var(--stroke);
+      width:var(--panel-w);
+      background:var(--bg); border:1px solid var(--stroke);
       border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden;
       opacity:0; transform:translateY(8px) scale(.98); visibility:hidden;
       transition:opacity .16s ease, transform .16s ease, visibility .16s ease;
     }
     #gett-popin.open{ opacity:1; transform:translateY(0) scale(1); visibility:visible; }
+
     .popin-head{ display:flex; align-items:center; justify-content:space-between; padding:.75rem .9rem; border-bottom:1px solid var(--stroke); background:#fff; }
     .title{ font-weight:600; font-size:.95rem; color:var(--text); }
     .popin-body{ padding:.9rem; display:flex; flex-direction:column; gap:.7rem; max-height:60dvh; overflow:auto; }
+
     .buttons-col{ display:flex; flex-direction:column; gap:.45rem; }
-    .button{ width:100%; padding:.6rem .8rem; border-radius:10px; border:1px solid var(--stroke); background:#fafafa; cursor:pointer; transition:background .12s ease, transform .04s ease; font-size:.95rem; text-align:left; color:var(--text); }
+    .button{
+      width:100%; padding:.6rem .8rem; border-radius:10px;
+      border:1px solid var(--stroke); background:#fafafa; color:var(--text);
+      cursor:pointer; transition:background .12s ease, transform .04s ease, border-color .12s ease;
+      font-size:.95rem; text-align:left;
+    }
     .button:hover{ background:#f0f0f0; } .button:active{ transform: translateY(1px); }
+
+    /* État actif visuel (supporte Safari moderne). Pour compat older, on peut fallback en rgba(). */
+    .button[aria-pressed="true"]{
+      background: color-mix(in srgb, var(--active) 12%, white);
+      border-color: color-mix(in srgb, var(--active) 45%, var(--stroke));
+      outline: 0;
+    }
+
     .button.learn{ margin-top:.4rem; background:#fff; text-align:center; }
     .subtitle{ font-size:.85rem; color:var(--muted); margin-top:.2rem; }
     `;
@@ -332,18 +376,10 @@
 
   function hasConsent(){ return true; }
 
-  // NEW: API publique minimale pour GTM/externes
+  // API publique minimale pour GTM/externes
   w.gett = w.gett || {
-    setMode(mode){
-      // évite double dispatch: onSelectMode déclenche déjà les events
-      if (mode) { ui.onSelectMode(mode); }
-      else { ui.onReset(); }
-    },
-    setLang(lang){
-      // pour l’instant, seule “en” force le mode translate-en
-      if (lang === 'en'){ ui.onSelectMode('translate-en'); }
-      else { ui.onReset(); }
-    }
-  }; // NEW
+    setMode(mode){ mode ? ui.onSelectMode(mode) : ui.onReset(); },
+    setLang(lang){ (lang === 'en') ? ui.onSelectMode('translate-en') : ui.onReset(); }
+  };
 
 })(window,document);
